@@ -1,0 +1,15 @@
+Source: watchnet
+Section: misc
+Priority: optional
+Maintainer: Jordi Pujol Palomer <jordipujolp@gmail.com>
+Build-Depends: debhelper (>= 9),
+Standards-Version: 3.8.0
+Homepage: http://livenet.selfip.com
+
+Package: watchnet
+Architecture: all
+Depends: ${misc:Depends},
+ bash, awk, iproute2, ifupdown, ifplugd, systemd,
+Recommends:
+ guessnet, libnotify-bin,
+Description: A really lightweight interface watcher utility.

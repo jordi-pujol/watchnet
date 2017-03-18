@@ -1,0 +1,76 @@
+###
+# Live never ending Tale
+#
+# live-net-initramfs script
+#
+#  (C) 2009-2016 Jordi Pujol <jordipujolp@gmail.com>
+# License:   GPLv2
+#
+# Live never ending Tale Project Homepage:
+# http://livenet.selfip.com
+###
+
+# /etc/network/interfaces
+# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+# file used by ifup(8) and ifdown(8)
+
+# The loopback interface, allways implicit, no need to declare
+#auto lo
+#iface lo inet loopback
+
+# guessnet and network manager do not source a directory,
+# so watchnet neither.
+#source-directory /etc/network/interfaces.d
+
+# eth0
+allow-hotplug eth0
+mapping eth0
+	script /usr/sbin/guessnet-ifupdown
+	map autofilter: true
+	map verbose: true
+	map debug: true
+	map timeout: 10
+
+iface eth0-default inet dhcp
+
+# eth1
+# watchnetd will monitor this interface after raised up
+allow-hotplug eth1
+iface eth1 inet dhcp
+	post-up /usr/sbin/watchnetd eth1
+
+# wlan0
+# watchnet-ifupdown calls guessnet-ifupdown
+# and therefore submits the watchnetd daemon to monitor this interface
+allow-hotplug wlan0
+mapping wlan0
+	script /usr/sbin/watchnet-ifupdown
+	map autofilter: true
+	map verbose: true
+	map debug: true
+	map iwscan-tries: 3
+	map timeout: 10
+
+iface wlan0-anyopen inet dhcp
+	# You can also match any open network, if you are desperate :)
+	wireless-essid any
+	wireless-mode auto
+	test wireless open
+
+iface wlan0-casa inet dhcp
+	wpa-ssid "jordipujol"
+	wpa-psk "ABCDEFABCDEFABCDEFABCDEF"
+	test wireless essid "jordipujol"
+
+iface wlan0-altre inet static
+	address 192.168.4.17
+	broadcast 192.168.4.255
+	gateway 192.168.4.1
+	netmask 255.255.255.0
+	network 192.168.4.0
+	dns-nameservers 192.168.4.1
+	dns-search unaaltrexarxa.net
+	wpa-ssid "unaaltrexarxa"
+	wpa-psk "ABCDEFABCDEFABCDEFABCDEF"
+	test wireless essid "unaaltrexarxa"

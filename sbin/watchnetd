@@ -1,0 +1,282 @@
+#!/bin/bash
+
+###
+# Live never ending Tale
+#
+# live-net-initramfs script
+#
+#  (C) 2009-2016 Jordi Pujol <jordipujolp@gmail.com>
+# License:   GPLv2
+#
+# Live never ending Tale Project Homepage:
+# http://livenet.selfip.com
+###
+
+NOTIFYXDISPLAY="y"
+NOTIFYXTERM=""
+NOTIFYCONSOLE="y"
+DEBUG=""
+test ! -s /etc/watchnet.conf || \
+	. /etc/watchnet.conf
+
+if [ -n "${DEBUG:-}" ]; then
+	export PS4='+\t ${BASH_SOURCE}:${LINENO}:${FUNCNAME:+"${FUNCNAME}:"} '
+	exec {BASH_XTRACEFD}> "$(mktemp /tmp/$(basename "${0}").xtrace-XXXXX)"
+	set -x
+	exec >&${BASH_XTRACEFD} 2>&1
+fi
+
+# group has write rights -> mesg is enabled on terminal
+_notify_term() {
+	local terminal="${1}"
+	[ $(( "0$(stat -c %a "${terminal}")" & "0020" )) -le 0 ] || \
+	printf '%s %s %s\n' "$(basename "${0}") ${iface}" \
+		"${msg1}" "${msg2}" > "${terminal}" || :
+}
+
+_notify() {
+	local msg1="${1}" msg2="${2:-}"
+	local usr display terminal
+
+	# logged-in users
+	if read usr terminal display; then
+		if [ "${display}" = "-" ]; then
+			[ -z "${NOTIFYCONSOLE:-}" ] || \
+				_notify_term "/dev/${terminal}"
+		elif [ -n "${NOTIFYXDISPLAY:-}" ]; then
+			> /dev/null 2>&1 \
+			DISPLAY="${display}" \
+				sudo -n -u "${usr}" -- \
+				notify-send -a "$(basename "${0}") ${iface}" \
+				"${msg1}" "${msg2}"
+		fi
+	fi < <(w -hs | \
+	awk -v tty="$(cat /sys/class/tty/tty0/active)" \
+	'$2 == tty {print $1 , $2 , $3; exit}')
+
+	# write a message to an X terminal when mesg is y
+	[ -z "${NOTIFYXTERM:-}" ] || \
+		for terminal in $(find /dev/pts -type c -name '[[:digit:]+]'); do
+			_notify_term "${terminal}"
+		done
+
+	# logging
+	printf "%s\n" "${msg1}" "${msg2}" >&${fd_log_pipe}
+}
+
+_simple_ping() {
+	ping -q -W 1 -c 2 -I "${iface}" "${gateway}" > /dev/null
+}
+
+_interface_status() {
+	[ "$(cat "/sys/class/net/${iface}/link_mode")" = "1" ] && \
+	[ "$(cat "/sys/class/net/${iface}/carrier")" = "1" ] && \
+	[ "$(cat "/sys/class/net/${iface}/operstate")" = "up" ]
+}
+
+# Check connectivity of the interface
+_connected() {
+	if ! systemctl status networking.service; then
+		_notify "Can't continue. Networking service is disabled."
+		exit 1
+	fi
+	if [ ! -L "/sys/class/net/${iface}" ]; then
+		_notify "Error: network device has been removed."
+		exit 1
+	fi
+
+	_interface_status || \
+		return 1
+
+	local ri ti rf tf
+	if [ -n "${connected}" ] && \
+	read ri ti < <(awk -v iface="${iface}:" \
+	'$1 == iface {print $3 , $11; exit}' < /proc/net/dev); then
+		sleep 1
+		read rf tf < <(awk -v iface="${iface}:" \
+		'$1 == iface {print $3 , $11; exit}' < /proc/net/dev)
+		[ "${ri}" -ge "${rf}" ] || \
+		[ "${ti}" -ge "${tf}" ] || \
+			return 0
+	fi
+
+	# check any IP in our network,
+	# may be the network gateway, the wifi access point, or the DHCP server
+	local gateway
+	for gateway in $(ip neigh show dev "${iface}" | \
+	awk '$NF != "FAILED" {print $1}'); do
+		! _simple_ping || \
+			return 0
+		[ -n "${connected}" ] || \
+			continue
+		sleep 1
+		! _simple_ping || \
+			return 0
+	done
+	return 2
+}
+
+_sleep() {
+	if [ -z "${connected}" ]; then
+		local watchdog=60
+		local c=10
+		while [ ${c} -ge 0 ] && \
+		[ ${watchdog} -ge 0 ]; do
+			if _connected; then
+				connected="y"
+				dont_give_up="y"
+				_notify "Now interface is connected." \
+				"$(grep -sEe '^(search|nameserver)' /etc/resolv.conf)"
+				return 0
+			elif [ "${?}" != "2" ]; then
+				c=$((${c}-1))
+			fi
+			watchdog=$((${watchdog}-1))
+			sleep 2 &
+			pid_sleep="${!}"
+			wait "${pid_sleep}" || :
+		done
+	else
+		sleep 20 &
+		pid_sleep="${!}"
+		wait "${pid_sleep}" || :
+	fi
+	_connected
+}
+
+_not_running() {
+	local cmd="${0}"
+	local pid
+	for pid in $(pidof -o %PPID -x "${cmd}"); do
+		! ps --no-heading -o cmd --pid "${pid}" | \
+		grep -qsEe "\b$(basename "${cmd}")[[:blank:]]+${iface}\b" || \
+			return 1
+	done
+}
+
+_watchnet_daemon_error() {
+	local parent_lineno="${1:-}"
+	local cmd="${2:-}"
+	_notify "Error on command '${cmd}' near line ${parent_lineno};" \
+	"Exiting with status 1"
+	exit 1
+}
+
+_watchnet_daemon_exit() {
+	[ -L "/sys/class/net/${iface}" ] && \
+		_notify "Not watching interface now." \
+		"Exit." || \
+		_notify "Error: Interface has been removed." \
+		"Exit."
+	exec {fd_log_pipe}>&-
+	wait || :
+}
+
+_watchnet_daemon_reload() {
+	kill -TERM "${pid_sleep}" || :
+}
+
+_signal_reload() {
+	local cmd="${0}"
+	local pid
+	[ "${iface}" != "--all" ] || \
+		iface=""
+	for pid in $(pidof -o %PPID -x "${cmd}"); do
+		! ps --no-heading -o cmd --pid "${pid}" | \
+		grep -qsEe "\b$(basename "${cmd}")[[:blank:]]+${iface}\b" || \
+			kill -HUP "${pid}"
+	done
+	exit 0
+}
+
+set +o errexit +o pipefail
+set -o nounset -o noglob
+
+iface="${1:-}"
+[ -n "${iface}" ] || \
+	exit 1
+
+[ "${2:-}" != "down" ] || \
+	_signal_reload
+
+if [ ! -L "/sys/class/net/${iface}" ]; then
+	echo "Error: network device ${iface} does not exist." >&2
+	exit 1
+fi
+
+echo "watchnet: watching network interface ${iface}." >&2
+
+# waiting for all services to start
+sleep 5
+
+# exit when it's already running
+_not_running || \
+	exit 0
+
+[ -n "${DEBUG}" ] || \
+	exec > /dev/null 2>&1
+
+ppid="$(ps --no-heading -o ppid --pid "${$}")"
+if [ "${ppid// /}" != 1 ]; then
+	setsid setsid "${0}" "${@}"
+	exit 0
+fi
+
+[ -z "${NOTIFYXDISPLAY}" ] || \
+	NOTIFYXDISPLAY="$(which notify-send)" || :
+
+# systemd logging
+log_pipe="$(mktemp --dry-run /var/tmp/$(basename "${0}").pipe-XXXXX | \
+	tee >(mkfifo "$(cat -)"))"
+systemd-cat --identifier="$(basename "${0}") ${iface}" < "${log_pipe}" &
+exec {fd_log_pipe}>"${log_pipe}"
+rm -f "${log_pipe}"
+
+trap '_watchnet_daemon_error "${LINENO}" "${BASH_COMMAND}"' ERR
+trap '_watchnet_daemon_exit' EXIT
+trap '_watchnet_daemon_reload' HUP
+
+# check for wifi interfaces
+wireless="$(! test -d "/sys/class/net/${iface}/wireless" || echo "y")"
+
+connected=""
+dont_give_up="$(awk -v iface="${iface}" \
+'$1 ~ "^(auto|allow-auto|allow-hotplug)$" && $2 == iface {print "y"; exit}' \
+/etc/network/interfaces)"
+trying=0
+pid_sleep="0"
+while :; do
+	if _sleep; then
+		trying=0
+		continue
+	fi
+	[ -z "${connected}" ] || \
+		_notify "Now ${iface} is disconnected."
+	connected=""
+
+	[ -n "${dont_give_up}" ] || \
+		if [ ${trying} -ge 5 ]; then
+			_notify "Error: Can't connect interface." \
+			"Giving up."
+			exit 1
+		else
+			_notify "Warning: Can't raise up interface." \
+			"Retrying."
+			trying=$((${trying}+1))
+		fi
+
+	if _interface_status; then
+		ifdown --force "${iface}" || :
+		if [ -n "${wireless}" ] && \
+		! readlink -f "/etc/ifplugd/action.d/ifupdown" | \
+		grep -qse "wpa_supplicant"; then
+			_notify "Warning: /etc/ifplugd/action.d/ifupdown" \
+			"is not linked to /etc/wpa_supplicant/ifupdown.sh."
+			systemctl stop wpa_supplicant.scope || :
+		fi
+		sleep 1
+		ip neigh flush dev "${iface}" # clear out the ARP cache
+	fi
+	ifup "${iface}" || :
+done
+:

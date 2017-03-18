@@ -1,0 +1,29 @@
+#!/usr/bin/make -f
+# Uncomment this to turn on verbose mode.
+# export DH_VERBOSE=1
+
+BIN := $(notdir $(wildcard bin/*))
+SBIN := $(notdir $(wildcard sbin/*))
+DEBIAN := $(notdir $(wildcard debian/*init) $(wildcard debian/*default) \
+$(wildcard debian/*post*) $(wildcard debian/*pre*))
+
+%:
+	dh $@
+
+override_dh_auto_test: $(BIN:%=bin-%) $(SBIN:%=sbin-%) $(CONF:%=conf-%) \
+$(DEBIAN:%=debian-%)
+
+bin-%:
+	$(info checking $* ...)
+	@dash -n bin/$*
+	-@checkbashisms -f bin/$*
+
+sbin-%:
+	$(info checking $* ...)
+	@bash -n sbin/$*
+	-@checkbashisms -f sbin/$*
+
+debian-%:
+	$(info checking $* ...)
+	@dash -n debian/$*
+	-@checkbashisms -f debian/$*

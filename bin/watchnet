@@ -1,0 +1,42 @@
+#!/bin/sh
+
+###
+# Live never ending Tale
+#
+# live-net-initramfs script
+#
+#  (C) 2009-2016 Jordi Pujol <jordipujolp@gmail.com>
+# License:   GPLv2
+#
+# Live never ending Tale Project Homepage:
+# http://livenet.selfip.com
+###
+
+#
+# /etc/network/if-post-down.d/watchnet
+# mode 0755
+#
+# This file is executed by ifupdown in pre-up, post-up, pre-down and
+# post-down phases of network interface configuration. It allows
+# ifup(8), and ifdown(8) to set network routes and firewall rules.
+#
+
+# quit if we're called for the loopback
+if [ "$IFACE" = lo ]; then
+	exit 0
+fi
+
+# calculate runlevel
+! runlevel | grep -qsE '[06]$' || exit 0
+
+case "$MODE" in
+stop)
+	case "$PHASE" in
+	post-down)
+		setsid /usr/sbin/watchnetd "${IFACE}" "down"
+		;;
+	esac
+	;;
+esac
+
+exit 0
