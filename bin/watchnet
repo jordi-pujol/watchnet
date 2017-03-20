@@ -1,25 +1,29 @@
 #!/bin/sh
 
 ###
-# Live never ending Tale
+# watchnet
 #
-# live-net-initramfs script
+# Monitors a network interface connection, notifies changes to the user
+# and reconnects the interface when possible.
 #
-#  (C) 2009-2016 Jordi Pujol <jordipujolp@gmail.com>
-# License:   GPLv2
+#  (C) 2013-2017 Jordi Pujol <jordipujolp@gmail.com>
+# GNU General Public License v3.0
 #
-# Live never ending Tale Project Homepage:
-# http://livenet.selfip.com
+# Homepage:
+# https://github.com/jordi-pujol/watchnet
+#
+# Debian repository:
+# deb [arch=amd64,i386] http://livenet.ddns.net/ftp/debian/ sid main
+# deb-src http://livenet.ddns.net/ftp/debian/ sid main
 ###
-
 #
 # /etc/network/if-post-down.d/watchnet
 # mode 0755
 #
-# This file is executed by ifupdown in pre-up, post-up, pre-down and
-# post-down phases of network interface configuration. It allows
-# ifup(8), and ifdown(8) to set network routes and firewall rules.
-#
+# This file is executed by ifupdown in post-down phase of 
+# network interface configuration. It allows ifup(8), and ifdown(8)
+# to monitor a network interface.
+
 
 # quit if we're called for the loopback
 if [ "$IFACE" = lo ]; then

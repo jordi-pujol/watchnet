@@ -1,15 +1,28 @@
 #!/bin/bash
 
 ###
-# Live never ending Tale
+# watchnet
 #
-# live-net-initramfs script
+# Monitors a network interface connection, notifies changes to the user
+# and reconnects the interface when possible.
 #
-#  (C) 2009-2016 Jordi Pujol <jordipujolp@gmail.com>
-# License:   GPLv2
+#  (C) 2013-2017 Jordi Pujol <jordipujolp@gmail.com>
+# GNU General Public License v3.0
 #
-# Live never ending Tale Project Homepage:
-# http://livenet.selfip.com
+# Homepage:
+# https://github.com/jordi-pujol/watchnet
+#
+# Debian repository:
+# deb [arch=amd64,i386] http://livenet.ddns.net/ftp/debian/ sid main
+# deb-src http://livenet.ddns.net/ftp/debian/ sid main
+###
+# watchnetd
+# It's the daemon script that monitors the interface and manages the connection.
+#
+# Usage:
+# watchnetd ifname [down]
+#
+# When receives a HUP signal will check the interface immediatelly.
 ###
 
 NOTIFYXDISPLAY="y"
