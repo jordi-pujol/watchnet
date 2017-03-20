@@ -14,25 +14,19 @@ Examples:
 
 The superuser can request the daemon to connect and/or watch an already connected interface:
 
-/usr/sbin/watchnetd ifname
+    /usr/sbin/watchnetd ifname
 
 The file /etc/network/interfaces can request the daemon to monitor an interface:
 
-iface eth1 inet dhcp
-
-    post-up /usr/sbin/watchnetd eth1
+    iface eth1 inet dhcp
+        post-up /usr/sbin/watchnetd eth1
 
 Or a mapping in the file /etc/network/interfaces can select a guessnet configuration:
 
-mapping wlan0
-
-    script /usr/sbin/watchnet-ifupdown
-
-
-iface wlan0-casa inet dhcp
-
-    wpa-ssid "jordipujol"
-
+    mapping wlan0
+        script /usr/sbin/watchnet-ifupdown
+    iface wlan0-casa inet dhcp
+        wpa-ssid "jordipujol"
     ...
 
 See most detailed configurations in the samples directory, .
